@@ -8,6 +8,7 @@ edition = "2018"
 
 [dependencies]
 cpal = "0.10.0"
+rust_decimal = "1.0.2"
 
 [dependencies.bytes]
 version = "0.4.12"
