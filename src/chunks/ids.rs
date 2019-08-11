@@ -23,4 +23,4 @@ pub const BASC: &ID = b"basc";
 pub const TRNS: &ID = b"trns";
 pub const CATE: &ID = b"cate";
 
-pub const ID3: &ID = b"ID3 "; // should only be 3 bytes - should this be used?
+pub const ID3: &[u8; 3] = b"ID3"; // ID3 has a 3 byte ID... cute

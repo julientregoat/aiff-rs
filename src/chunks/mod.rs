@@ -8,8 +8,6 @@ use std::io::Cursor;
 
 type Buffer<'a> = &'a mut Cursor<Vec<u8>>;
 
-// TODO - use binary search slice ops to find IDs faster?
-
 // The first 8 bytes of a chunk are chunk ID and chunk size
 pub struct ChunkBuilder(ID);
 
@@ -74,8 +72,7 @@ impl FormChunk {
     // Reader should create chunk builders and pass them to a fn
     // here called 'add_chunk'.
     pub fn load_chunks(&mut self, buf: Buffer) -> Result<(), ChunkError> {
-        // FIXME don't go over index, check len
-        loop {
+        while buf.remaining() >= 4 {
             let cb = ChunkBuilder::new(buf);
 
             // once the common and form are detected, we can loop
@@ -121,11 +118,15 @@ impl FormChunk {
                     Ok(chunk) => self.add_chunk(Box::new(chunk)),
                     Err(e) => println!("Build ID3 chunk failed {:?}", e),
                 },
-                CHAN | BASC | TRNS | CATE => println!("apple stuff"),
+                CHAN | BASC | TRNS | CATE => println!("apple stuff detected"),
                 _ => (),
                 //                id => println!("other chunk {:?}", id),
             }
         }
+
+        // FIXME handle remaining bytes
+        println!("buffer complete {}", buf.remaining());
+        Ok(())
     }
 }
 
@@ -140,16 +141,16 @@ impl Chunk for FormChunk {
         buf.copy_to_slice(&mut form_type);
 
         match &form_type {
-            AIFF_C => {
-                println!("aiff c file detected");
-                Err(ChunkError::InvalidFormType(form_type))
-            }
             AIFF => Ok(FormChunk {
                 size,
                 common: None,
                 sound: None,
                 chunks: vec![],
             }),
+            AIFF_C => {
+                println!("aiff c file detected");
+                Err(ChunkError::InvalidFormType(form_type))
+            }
             &x => Err(ChunkError::InvalidFormType(x)),
         }
     }
@@ -186,6 +187,7 @@ impl Chunk for CommonChunk {
         buf.copy_to_slice(&mut rate_mid);
         buf.copy_to_slice(&mut rate_low);
 
+        // FIXME not really sure if this is correct
         let sample_rate = Decimal::from_parts(
             u32::from_le_bytes(rate_low),
             u32::from_le_bytes(rate_mid),
@@ -313,14 +315,20 @@ impl Chunk for TextChunk {
     }
 }
 
+// rust-id3 is a far better library - the best option is probably to return
+// a generic u8 array that is compatible with that library. we can read the
+// tag and size, and cut a slice to size to extract it. for now, we only
+// cut the slice to know where the data is.
 struct ID3Chunk {
     version: [u8; 2],
 }
 
+// IMPORTANT - there is a COMM ID here as well. not a a problem
+// if the id3 data is separated.
 impl Chunk for ID3Chunk {
     fn build(cb: ChunkBuilder, buf: Buffer) -> Result<ID3Chunk, ChunkError> {
         let id = cb.id();
-        if id[0..3] != ID3[0..3] {
+        if &id[0..3] != ID3 {
             return Err(ChunkError::InvalidID(cb.consume()));
         }
 
@@ -336,16 +344,36 @@ impl Chunk for ID3Chunk {
             }
         }
 
-        println!("ID3 version {:?}", version);
-
         // TODO check bit flags
         let flags = buf.get_u8();
-        if flags == 0 {
+        if flags != 0 {
             println!("flags were set; currently unable to parse flags: {}", flags);
         }
 
+        // so far this number is wrong... why?
         let size = buf.get_u32_be();
-        println!("size {}", size);
+        println!("size {} remaining {}", size, buf.remaining());
+
+        while buf.remaining() >= 4 {
+            let mut id = [0; 4];
+            buf.copy_to_slice(&mut id);
+
+            let mut size = buf.get_u32_be();
+
+            let mut flags = [0; 2];
+            buf.copy_to_slice(&mut flags);
+
+            let mut data = vec![0; size as usize];
+            buf.copy_to_slice(&mut data);
+
+            println!(
+                "id {} size {} flags {:?} remaining {}",
+                String::from_utf8_lossy(&id),
+                size,
+                flags,
+                buf.remaining()
+            )
+        }
 
         Ok(ID3Chunk { version })
     }
