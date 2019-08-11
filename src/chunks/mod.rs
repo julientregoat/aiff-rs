@@ -1,11 +1,14 @@
 mod ids;
+pub mod reader;
 
+use self::ids::*;
 use bytes::buf::Buf;
 use rust_decimal::Decimal;
 use std::io::Cursor;
-use self::ids::*;
 
 type Buffer<'a> = &'a mut Cursor<Vec<u8>>;
+
+// TODO - use binary search slice ops to find IDs faster?
 
 // The first 8 bytes of a chunk are chunk ID and chunk size
 pub struct ChunkBuilder(ID);
@@ -34,18 +37,18 @@ impl ChunkBuilder {
 #[derive(Debug)]
 pub enum ChunkError {
     InvalidID(ID),
-    InvalidFormType,
-    InvalidID3Version([u8; 2])
+    InvalidFormType(ID),
+    InvalidID3Version([u8; 2]),
 }
 
 pub trait Chunk {
     fn build(cb: ChunkBuilder, buffer: Buffer) -> Result<Self, ChunkError>
-        where
-            Self: Sized;
+    where
+        Self: Sized;
 }
 
 // container for all other chunks in file
-// TODO return CompleteFormChunk when CommonChunk is present?
+// TODO return CompleteFormChunk when CommonChunk + SoundChunk is present?
 // assuming we can't rely on the common chunk being at the start
 pub struct FormChunk {
     size: i32,
@@ -67,10 +70,13 @@ impl FormChunk {
         self.chunks.push(chunk);
     }
 
+    // TODO move to ChunkReader
+    // Reader should create chunk builders and pass them to a fn
+    // here called 'add_chunk'.
     pub fn load_chunks(&mut self, buf: Buffer) -> Result<(), ChunkError> {
-        // FIXME don't go over index
+        // FIXME don't go over index, check len
         loop {
-            let cb = ChunkBuilder::new( buf);
+            let cb = ChunkBuilder::new(buf);
 
             // once the common and form are detected, we can loop
             match cb.id() {
@@ -78,18 +84,23 @@ impl FormChunk {
                     println!("Common chunk detected");
                     let common = CommonChunk::build(cb, buf).unwrap();
                     println!(
-                        "frames {} size {} rate {}",
-                        common.num_sample_frames, common.sample_size, common.sample_rate
+                        "channels {} frames {} size {} rate {}",
+                        common.num_channels,
+                        common.num_sample_frames,
+                        common.sample_size,
+                        common.sample_rate
                     );
                     self.add_common(common);
-
-                },
+                }
                 SOUND => {
                     println!("SOUND chunk detected");
                     let sound = SoundDataChunk::build(cb, buf).unwrap();
-                    println!("size {} offset {} block size {}", sound.size, sound.offset, sound.block_size);
+                    println!(
+                        "size {} offset {} block size {}",
+                        sound.size, sound.offset, sound.block_size
+                    );
                     self.add_sound(sound);
-                },
+                }
                 MARKER => println!("MARKER chunk detected"),
                 INSTRUMENT => println!("INSTRUMENT chunk detected"),
                 MIDI => println!("MIDI chunk detected"),
@@ -100,18 +111,19 @@ impl FormChunk {
                     let text = TextChunk::build(cb, buf).unwrap();
                     println!("TEXT chunk detected: {}", text.text);
                     self.add_chunk(Box::new(text));
-                },
-                FVER=> {println!("FVER chunk detected"); unimplemented!();},
+                }
+                FVER => {
+                    println!("FVER chunk detected");
+                    unimplemented!();
+                }
                 // 3 bytes "ID3" identifier. 4th byte is first version byte
-                [73, 68, 51, _x] => {
-                    match ID3Chunk::build(cb, buf) {
-                        Ok(chunk) => self.add_chunk(Box::new(chunk)),
-                        Err(e) => println!("Build ID3 chunk failed {:?}", e)
-                    }
+                [73, 68, 51, _x] => match ID3Chunk::build(cb, buf) {
+                    Ok(chunk) => self.add_chunk(Box::new(chunk)),
+                    Err(e) => println!("Build ID3 chunk failed {:?}", e),
                 },
                 CHAN | BASC | TRNS | CATE => println!("apple stuff"),
                 _ => (),
-//                id => println!("other chunk {:?}", id),
+                //                id => println!("other chunk {:?}", id),
             }
         }
     }
@@ -130,10 +142,15 @@ impl Chunk for FormChunk {
         match &form_type {
             AIFF_C => {
                 println!("aiff c file detected");
-                Err(ChunkError::InvalidFormType)
+                Err(ChunkError::InvalidFormType(form_type))
             }
-            AIFF => Ok(FormChunk { size, common: None, sound: None, chunks: vec![]}),
-            _ => Err(ChunkError::InvalidFormType)
+            AIFF => Ok(FormChunk {
+                size,
+                common: None,
+                sound: None,
+                chunks: vec![],
+            }),
+            &x => Err(ChunkError::InvalidFormType(x)),
         }
     }
 }
@@ -149,11 +166,15 @@ struct CommonChunk {
 impl Chunk for CommonChunk {
     fn build(cb: ChunkBuilder, buf: Buffer) -> Result<CommonChunk, ChunkError> {
         if cb.id() != COMMON {
-            return Err(ChunkError::InvalidID(cb.consume()))
+            return Err(ChunkError::InvalidID(cb.consume()));
         }
 
-        let (size, num_channels, num_sample_frames, sample_size) =
-            (buf.get_i32_be(), buf.get_i16_be(), buf.get_u32_be(), buf.get_i16_be());
+        let (size, num_channels, num_sample_frames, sample_size) = (
+            buf.get_i32_be(),
+            buf.get_i16_be(),
+            buf.get_u32_be(),
+            buf.get_i16_be(),
+        );
 
         // rust_decimal requires 96 bits to create a decimal
         // the extended precision / double long sample rate is 80 bits
@@ -187,7 +208,7 @@ struct SoundDataChunk {
     pub size: i32,
     pub offset: u32,
     pub block_size: u32,
-    pub sound_data: Vec<u8>
+    pub sound_data: Vec<u8>,
 }
 
 impl Chunk for SoundDataChunk {
@@ -200,18 +221,31 @@ impl Chunk for SoundDataChunk {
         let size = buf.get_i32_be();
         let offset = buf.get_u32_be();
         let block_size = buf.get_u32_be();
-        let mut sound_data = vec![];
 
-        // sound data length = chunk size (bytes) - 4byte offset - 4byte blocksize
-        for _ in 8..size {
-            sound_data.push(buf.get_u8());
-        }
+        // TODO compare size / sound size with CommonChunk::num_sample_frames
+        // size should be equal to num_sample_frames * num_channels.
+        // According to the spec, `size` should account for offset + block_size + sound_data
+        // or at least, it's implied? Either way, accounting for it causes current output
+        // to make less sense.
+
+        // let sound_size = size - 8; // offset + blocksize = 8 bytes
+        let sound_size = size;
+        let start = buf.position() as usize;
+        let stop = start + sound_size as usize;
+
+        //        let mut sound_data = Vec::from(&buf.get_mut()[start..stop]);
+        //        buf.advance(sound_size as usize);
+
+        // TODO compare these methods
+
+        let mut sound_data = vec![0; sound_size as usize];
+        buf.copy_to_slice(&mut sound_data);
 
         Ok(SoundDataChunk {
             size,
             offset,
             block_size,
-            sound_data
+            sound_data,
         })
     }
 }
@@ -263,6 +297,7 @@ impl Chunk for TextChunk {
             _ => return Err(ChunkError::InvalidID(cb.consume())),
         };
 
+        // FIXME copy slice
         let size = buf.get_i32_be();
         let mut text_bytes = vec![];
         for _ in 0..size {
@@ -279,31 +314,39 @@ impl Chunk for TextChunk {
 }
 
 struct ID3Chunk {
-    version: [u8; 2]
+    version: [u8; 2],
 }
 
 impl Chunk for ID3Chunk {
     fn build(cb: ChunkBuilder, buf: Buffer) -> Result<ID3Chunk, ChunkError> {
         let id = cb.id();
         if id[0..3] != ID3[0..3] {
-            return Err(ChunkError::InvalidID(cb.consume()))
+            return Err(ChunkError::InvalidID(cb.consume()));
         }
 
         let version = [id[3], buf.get_u8()];
 
-        // constants?
         match version {
             [2, 0] => println!("id3 v2.0-2.2"),
             [3, 0] => println!("id3 v2.3"),
             [4, 0] => println!("id3 v2.4"),
             x => {
                 println!("unknown version {:?}", x);
-                return Err(ChunkError::InvalidID3Version(x))
+                return Err(ChunkError::InvalidID3Version(x));
             }
         }
 
         println!("ID3 version {:?}", version);
 
-        Ok(ID3Chunk{ version })
+        // TODO check bit flags
+        let flags = buf.get_u8();
+        if flags == 0 {
+            println!("flags were set; currently unable to parse flags: {}", flags);
+        }
+
+        let size = buf.get_u32_be();
+        println!("size {}", size);
+
+        Ok(ID3Chunk { version })
     }
 }
