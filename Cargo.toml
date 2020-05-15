@@ -9,8 +9,6 @@ homepage = "https://github.com/julientregoat/aiff-rs"
 repository = "https://github.com/julientregoat/aiff-rs"
 keywords = ["aiff", "pcm", "audio", "codec", "encoder", "decoder"]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 rust_decimal = "1.0.2"
 
@@ -20,3 +18,7 @@ features = ["i128"]
 
 [dev-dependencies]
 cpal = "0.11.0"
+
+# used with cargo-run-script
+[package.metadata.scripts]
+fmt = "cargo +nightly fmt"

@@ -54,17 +54,11 @@ pub struct FormChunk {
 }
 
 impl FormChunk {
-    fn add_common(&mut self, chunk: CommonChunk) {
-        self.common = Some(chunk);
-    }
+    fn add_common(&mut self, chunk: CommonChunk) { self.common = Some(chunk); }
 
-    fn add_sound(&mut self, chunk: SoundDataChunk) {
-        self.sound = Some(chunk);
-    }
+    fn add_sound(&mut self, chunk: SoundDataChunk) { self.sound = Some(chunk); }
 
-    fn add_chunk(&mut self, chunk: Box<dyn Chunk>) {
-        self.chunks.push(chunk);
-    }
+    fn add_chunk(&mut self, chunk: Box<dyn Chunk>) { self.chunks.push(chunk); }
 
     // TODO move to ChunkReader
     // Reader should create chunk builders and pass them to a fn
@@ -72,7 +66,60 @@ impl FormChunk {
     pub fn load_chunks(&mut self, buf: Buffer) -> Result<(), ChunkError> {
         while buf.remaining() >= 4 {
             let cb = ChunkBuilder::new(buf);
+
+            // once the common and form are detected, we can loop
+            match cb.id() {
+                ids::COMMON => {
+                    println!("Common chunk detected");
+                    let common = CommonChunk::build(cb, buf).unwrap();
+                    println!(
+                        "channels {} frames {} size {} rate {}",
+                        common.num_channels,
+                        common.num_sample_frames,
+                        common.sample_size,
+                        common.sample_rate
+                    );
+                    self.add_common(common);
+                }
+                ids::SOUND => {
+                    println!("SOUND chunk detected");
+                    let sound = SoundDataChunk::build(cb, buf).unwrap();
+                    println!(
+                        "size {} offset {} block size {}",
+                        sound.size, sound.offset, sound.block_size
+                    );
+                    self.add_sound(sound);
+                }
+                ids::MARKER => println!("MARKER chunk detected"),
+                ids::INSTRUMENT => println!("INSTRUMENT chunk detected"),
+                ids::MIDI => println!("MIDI chunk detected"),
+                ids::RECORDING => println!("RECORDING chunk detected"),
+                ids::APPLICATION => println!("APPLICATION chunk detected"),
+                ids::COMMENT => println!("COMMENT chunk detected"),
+                ids::NAME | ids::AUTHOR | ids::COPYRIGHT | ids::ANNOTATION => {
+                    let text = TextChunk::build(cb, buf).unwrap();
+                    println!("TEXT chunk detected: {}", text.text);
+                    self.add_chunk(Box::new(text));
+                }
+                ids::FVER => {
+                    println!("FVER chunk detected");
+                    unimplemented!();
+                }
+                // 3 bytes "ID3" identifier. 4th byte is first version byte
+                [73, 68, 51, _x] => match ID3Chunk::build(cb, buf) {
+                    Ok(chunk) => self.add_chunk(Box::new(chunk)),
+                    Err(e) => println!("Build ID3 chunk failed {:?}", e),
+                },
+                ids::CHAN | ids::BASC | ids::TRNS | ids::CATE => {
+                    println!("apple stuff detected")
+                }
+                _ => (),
+                //                id => println!("other chunk {:?}", id),
+            }
         }
+
+        // FIXME handle remaining bytes
+        println!("buffer complete {}", buf.remaining());
 
         Ok(())
     }
@@ -162,7 +209,10 @@ struct SoundDataChunk {
 }
 
 impl Chunk for SoundDataChunk {
-    fn build(cb: ChunkBuilder, buf: Buffer) -> Result<SoundDataChunk, ChunkError> {
+    fn build(
+        cb: ChunkBuilder,
+        buf: Buffer,
+    ) -> Result<SoundDataChunk, ChunkError> {
         // A generic for the tag check would be nice
         if cb.id() != ids::SOUND {
             return Err(ChunkError::InvalidID(cb.consume()));
@@ -295,14 +345,18 @@ impl Chunk for ID3Chunk {
         // TODO check bit flags
         let flags = buf.get_u8();
         if flags != 0 {
-            println!("flags were set; currently unable to parse flags: {}", flags);
+            println!(
+                "flags were set; currently unable to parse flags: {}",
+                flags
+            );
         }
 
         // "The ID3v2 tag size is encoded with four bytes where the most
         // significant bit (bit 7) is set to zero in every byte, making a total
         // of 28 bits. The zeroed bits are ignored, so a 257 bytes long tag is
         // represented as $00 00 02 01." - http://id3.org/id3v2.3.0
-        let (s1, s2, s3, s4) = (buf.get_u8(), buf.get_u8(), buf.get_u8(), buf.get_u8());
+        let (s1, s2, s3, s4) =
+            (buf.get_u8(), buf.get_u8(), buf.get_u8(), buf.get_u8());
         println!(
             "size bits s1 {} s2 {} s3 {} s4 {} remaining {}",
             s1,

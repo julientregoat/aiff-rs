@@ -17,7 +17,9 @@ impl AiffReader {
 
     pub fn read(&mut self) {
         // probably a way to make this look nicer
-        if let Ok(mut form) = FormChunk::build(ChunkBuilder::new(&mut self.buf), &mut self.buf) {
+        if let Ok(mut form) =
+            FormChunk::build(ChunkBuilder::new(&mut self.buf), &mut self.buf)
+        {
             form.load_chunks(&mut self.buf);
         } else {
             println!("unsupported first chunk");
