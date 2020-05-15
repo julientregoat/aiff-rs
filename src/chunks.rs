@@ -1,7 +1,4 @@
-mod ids;
-pub mod reader;
-
-use self::ids::*;
+use super::ids;
 use bytes::buf::Buf;
 use rust_decimal::Decimal;
 use std::io::Cursor;
@@ -9,24 +6,25 @@ use std::io::Cursor;
 type Buffer<'a> = &'a mut Cursor<Vec<u8>>;
 
 // The first 8 bytes of a chunk are chunk ID and chunk size
-pub struct ChunkBuilder(ID);
+pub struct ChunkBuilder(ids::ChunkID);
 
 // The 'parse' fns could return a dynamic type
 // but this allows us to lean on type checking, right?
 // otherwise we still have to figure out what type is returned anyway
 impl ChunkBuilder {
     pub fn new(buffer: Buffer) -> ChunkBuilder {
+        // TODO check size
         let mut id = [0; 4];
         buffer.copy_to_slice(&mut id);
         ChunkBuilder(id)
     }
 
-    pub fn id(&self) -> &ID {
+    pub fn id(&self) -> &ids::ChunkID {
         let ChunkBuilder(id) = &self;
         id
     }
 
-    pub fn consume(self) -> ID {
+    pub fn consume(self) -> ids::ChunkID {
         let ChunkBuilder(id) = self;
         id
     }
@@ -34,8 +32,8 @@ impl ChunkBuilder {
 
 #[derive(Debug)]
 pub enum ChunkError {
-    InvalidID(ID),
-    InvalidFormType(ID),
+    InvalidID(ids::ChunkID),
+    InvalidFormType(ids::ChunkID),
     InvalidID3Version([u8; 2]),
 }
 
@@ -74,65 +72,15 @@ impl FormChunk {
     pub fn load_chunks(&mut self, buf: Buffer) -> Result<(), ChunkError> {
         while buf.remaining() >= 4 {
             let cb = ChunkBuilder::new(buf);
-
-            // once the common and form are detected, we can loop
-            match cb.id() {
-                COMMON => {
-                    println!("Common chunk detected");
-                    let common = CommonChunk::build(cb, buf).unwrap();
-                    println!(
-                        "channels {} frames {} size {} rate {}",
-                        common.num_channels,
-                        common.num_sample_frames,
-                        common.sample_size,
-                        common.sample_rate
-                    );
-                    self.add_common(common);
-                }
-                SOUND => {
-                    println!("SOUND chunk detected");
-                    let sound = SoundDataChunk::build(cb, buf).unwrap();
-                    println!(
-                        "size {} offset {} block size {}",
-                        sound.size, sound.offset, sound.block_size
-                    );
-                    self.add_sound(sound);
-                }
-                MARKER => println!("MARKER chunk detected"),
-                INSTRUMENT => println!("INSTRUMENT chunk detected"),
-                MIDI => println!("MIDI chunk detected"),
-                RECORDING => println!("RECORDING chunk detected"),
-                APPLICATION => println!("APPLICATION chunk detected"),
-                COMMENT => println!("COMMENT chunk detected"),
-                NAME | AUTHOR | COPYRIGHT | ANNOTATION => {
-                    let text = TextChunk::build(cb, buf).unwrap();
-                    println!("TEXT chunk detected: {}", text.text);
-                    self.add_chunk(Box::new(text));
-                }
-                FVER => {
-                    println!("FVER chunk detected");
-                    unimplemented!();
-                }
-                // 3 bytes "ID3" identifier. 4th byte is first version byte
-                [73, 68, 51, _x] => match ID3Chunk::build(cb, buf) {
-                    Ok(chunk) => self.add_chunk(Box::new(chunk)),
-                    Err(e) => println!("Build ID3 chunk failed {:?}", e),
-                },
-                CHAN | BASC | TRNS | CATE => println!("apple stuff detected"),
-                _ => (),
-                //                id => println!("other chunk {:?}", id),
-            }
         }
 
-        // FIXME handle remaining bytes
-        println!("buffer complete {}", buf.remaining());
         Ok(())
     }
 }
 
 impl Chunk for FormChunk {
     fn build(cb: ChunkBuilder, buf: Buffer) -> Result<FormChunk, ChunkError> {
-        if cb.id() != FORM {
+        if cb.id() != ids::FORM {
             return Err(ChunkError::InvalidID(cb.consume()));
         }
 
@@ -141,13 +89,13 @@ impl Chunk for FormChunk {
         buf.copy_to_slice(&mut form_type);
 
         match &form_type {
-            AIFF => Ok(FormChunk {
+            ids::AIFF => Ok(FormChunk {
                 size,
                 common: None,
                 sound: None,
                 chunks: vec![],
             }),
-            AIFF_C => {
+            ids::AIFF_C => {
                 println!("aiff c file detected");
                 Err(ChunkError::InvalidFormType(form_type))
             }
@@ -166,7 +114,7 @@ struct CommonChunk {
 
 impl Chunk for CommonChunk {
     fn build(cb: ChunkBuilder, buf: Buffer) -> Result<CommonChunk, ChunkError> {
-        if cb.id() != COMMON {
+        if cb.id() != ids::COMMON {
             return Err(ChunkError::InvalidID(cb.consume()));
         }
 
@@ -216,7 +164,7 @@ struct SoundDataChunk {
 impl Chunk for SoundDataChunk {
     fn build(cb: ChunkBuilder, buf: Buffer) -> Result<SoundDataChunk, ChunkError> {
         // A generic for the tag check would be nice
-        if cb.id() != SOUND {
+        if cb.id() != ids::SOUND {
             return Err(ChunkError::InvalidID(cb.consume()));
         }
 
@@ -292,10 +240,10 @@ struct TextChunk {
 impl Chunk for TextChunk {
     fn build(cb: ChunkBuilder, buf: Buffer) -> Result<TextChunk, ChunkError> {
         let chunk_type = match cb.id() {
-            NAME => TextChunkType::Name,
-            AUTHOR => TextChunkType::Author,
-            COPYRIGHT => TextChunkType::Copyright,
-            ANNOTATION => TextChunkType::Annotation,
+            ids::NAME => TextChunkType::Name,
+            ids::AUTHOR => TextChunkType::Author,
+            ids::COPYRIGHT => TextChunkType::Copyright,
+            ids::ANNOTATION => TextChunkType::Annotation,
             _ => return Err(ChunkError::InvalidID(cb.consume())),
         };
 
@@ -328,7 +276,7 @@ struct ID3Chunk {
 impl Chunk for ID3Chunk {
     fn build(cb: ChunkBuilder, buf: Buffer) -> Result<ID3Chunk, ChunkError> {
         let id = cb.id();
-        if &id[0..3] != ID3 {
+        if &id[0..3] != ids::ID3 {
             return Err(ChunkError::InvalidID(cb.consume()));
         }
 
@@ -350,9 +298,19 @@ impl Chunk for ID3Chunk {
             println!("flags were set; currently unable to parse flags: {}", flags);
         }
 
-        // so far this number is wrong... why?
-        let size = buf.get_u32_be();
-        println!("size {} remaining {}", size, buf.remaining());
+        // "The ID3v2 tag size is encoded with four bytes where the most
+        // significant bit (bit 7) is set to zero in every byte, making a total
+        // of 28 bits. The zeroed bits are ignored, so a 257 bytes long tag is
+        // represented as $00 00 02 01." - http://id3.org/id3v2.3.0
+        let (s1, s2, s3, s4) = (buf.get_u8(), buf.get_u8(), buf.get_u8(), buf.get_u8());
+        println!(
+            "size bits s1 {} s2 {} s3 {} s4 {} remaining {}",
+            s1,
+            s2,
+            s3,
+            s4,
+            buf.remaining()
+        );
 
         while buf.remaining() >= 4 {
             let mut id = [0; 4];
@@ -367,10 +325,9 @@ impl Chunk for ID3Chunk {
             buf.copy_to_slice(&mut data);
 
             println!(
-                "id {} size {} flags {:?} remaining {}",
+                "id {} size {} remaining {}",
                 String::from_utf8_lossy(&id),
                 size,
-                flags,
                 buf.remaining()
             )
         }

@@ -2,7 +2,12 @@
 name = "aiff"
 version = "0.1.0"
 authors = ["Julien Tregoat <jules@jules.nyc>"]
+description = "AIFF codec"
 edition = "2018"
+license = "MIT OR Apache-2.0"
+homepage = "https://github.com/julientregoat/aiff-rs"
+repository = "https://github.com/julientregoat/aiff-rs"
+keywords = ["aiff", "pcm", "audio", "codec", "encoder", "decoder"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -14,4 +19,4 @@ version = "0.4.12"
 features = ["i128"]
 
 [dev-dependencies]
-cpal = "0.10.0"
+cpal = "0.11.0"
