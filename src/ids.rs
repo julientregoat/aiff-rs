@@ -1,3 +1,6 @@
+use super::reader::Buffer;
+use std::io::{Read, Seek, SeekFrom};
+
 pub type ChunkID = [u8; 4];
 
 pub const FORM: &ChunkID = b"FORM";
@@ -23,4 +26,5 @@ pub const BASC: &ChunkID = b"basc";
 pub const TRNS: &ChunkID = b"trns";
 pub const CATE: &ChunkID = b"cate";
 
-pub const ID3: &[u8; 3] = b"ID3"; // ID3 has a 3 byte ID... cute
+pub const TAG: &[u8; 3] = b"TAG";
+pub const ID3: &[u8; 3] = b"ID3";

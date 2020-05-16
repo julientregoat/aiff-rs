@@ -10,15 +10,16 @@ repository = "https://github.com/julientregoat/aiff-rs"
 keywords = ["aiff", "pcm", "audio", "codec", "encoder", "decoder"]
 
 [dependencies]
-rust_decimal = "1.0.2"
-
-[dependencies.bytes]
-version = "0.4.12"
-features = ["i128"]
+id3 = "0.5.1"
+bytes = "0.5.4"
+seek_bufread = "1.2.2"
+# simple_soft_float
+# dynstack = "0.4.0" # interesting option for maintaining chunks
 
 [dev-dependencies]
 cpal = "0.11.0"
 
 # used with cargo-run-script
 [package.metadata.scripts]
+test = "cargo test -- --nocapture"
 fmt = "cargo +nightly fmt"
