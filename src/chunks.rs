@@ -1,3 +1,4 @@
+use super::extended::parse_extended_precision_bytes;
 use super::{
     ids::{self, ChunkID},
     reader::{self, Buffer},
@@ -64,6 +65,9 @@ impl Chunk for FormChunk {
         buf: Buffer<S>,
         id: ChunkID,
     ) -> Result<FormChunk, ChunkError> {
+        if &id != ids::FORM {
+            return Err(ChunkError::InvalidID(id));
+        }
         // TODO validate this is correct chunk by id - rewind reader?
 
         let size = reader::read_i32_be(buf);
@@ -103,7 +107,6 @@ impl Chunk for CommonChunk {
         if &id != ids::COMMON {
             return Err(ChunkError::InvalidID(id));
         }
-        // TODO validate this is correct chunk by id - rewind reader?
 
         let (size, num_channels, num_sample_frames, bit_rate) = (
             reader::read_i32_be(buf),
@@ -115,11 +118,21 @@ impl Chunk for CommonChunk {
         // FIXME this is broken
         // need to parse IEEE 754 80 bit extended precision
         // use crate simple_soft_float with FloatProperties
-        let mut float_props = [0; 2]; // 1 bit sign, 15 bits exponent
-        let mut rate_test = [0; 8];
-        buf.read_exact(&mut float_props).unwrap();
-        buf.read_exact(&mut rate_test).unwrap();
-        let sample_rate = f64::from_be_bytes(rate_test);
+        // let props = simple_soft_float::FloatProperties::new_with_extended_flags(
+        //     15,
+        //     64,    // 1 bit integer part, 63 bit significand (???)
+        //     false, // integer part != implicit leading bit (???)
+        //     true,
+        //     simple_soft_float::PlatformProperties::default(), // TODO
+        // );
+
+        // let mut rate_raw = [0; 10];
+        // buf.read_exact(&mut rate_raw).unwrap();
+        // let f = simple_soft_float::Float::from_bits_and_traits(rate_raw, props);
+
+        let mut rate_buf = [0; 10]; // 1 bit sign, 15 bits exponent
+        buf.read_exact(&mut rate_buf).unwrap();
+        let sample_rate = parse_extended_precision_bytes(rate_buf);
 
         Ok(CommonChunk {
             size,

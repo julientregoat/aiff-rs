@@ -86,14 +86,20 @@ impl<S: Read + Seek> AiffReader<S> {
                     self.buf.seek(SeekFrom::Current(-4)).unwrap();
                     match chunks::ID3v2Chunk::build(&mut self.buf, id) {
                         Ok(chunk) => form.add_chunk(Box::new(chunk)),
-                        Err(e) => println!("Build ID3 chunk failed {:?}", e),
+                        Err(e) => {
+                            println!("Build ID3 chunk failed {:?}", e);
+                            self.buf.seek(SeekFrom::Current(3)).unwrap();
+                        }
                     }
                 }
                 [_, 73, 68, 51] => {
                     self.buf.seek(SeekFrom::Current(-3)).unwrap();
                     match chunks::ID3v2Chunk::build(&mut self.buf, id) {
                         Ok(chunk) => form.add_chunk(Box::new(chunk)),
-                        Err(e) => println!("Build ID3 chunk failed {:?}", e),
+                        Err(e) => {
+                            println!("Build ID3 chunk failed {:?}", e);
+                            self.buf.seek(SeekFrom::Current(3)).unwrap();
+                        }
                     }
                 }
                 [84, 65, 71, _] => println!("v1 id3"), // "TAG_"

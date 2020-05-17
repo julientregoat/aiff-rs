@@ -4,6 +4,7 @@ extern crate id3;
 extern crate seek_bufread;
 
 mod chunks;
+mod extended;
 mod ids;
 pub mod reader;
 
@@ -15,9 +16,10 @@ mod test {
     fn read() {
         let args: Vec<String> = std::env::args().collect();
         println!("args {:?}", args);
-        // let mut f = File::open("./purp.aiff").unwrap();
+        // let mut f = File::open("./devil.aiff").unwrap();
         // let mut f = File::open("/Volumes/jt-hd-osx/Music/Kode9/Tempa Allstars Vol. 2/03 Babylon (Dub Mix).aiff").unwrap();
-        let mut f = File::open("./purp.aiff").unwrap();
+        // let mut f = File::open("./purp.aiff").unwrap();
+        let mut f = File::open("/Volumes/jt-hd-osx/Music/Sophie Lloyd/Calling Out/01 Calling Out.aiff").unwrap();
 
         let mut reader = AiffReader::new(&mut f);
         reader.read().unwrap();
