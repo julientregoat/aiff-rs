@@ -1,4 +1,5 @@
 // a lazy IEEE 754 extended precision number parser
+// https://en.wikipedia.org/wiki/Extended_precision#x86_extended_precision_format
 use std::ops::Mul;
 
 const EXP_BIAS: i16 = 16383;
@@ -17,6 +18,7 @@ fn read_binary_fraction(byte: u8, byte_offset: u32, bias: u8) -> f64 {
     res
 }
 
+// TOOD return err
 pub fn parse_extended_precision_bytes(b: [u8; 10]) -> f64 {
     // println!(
     //     r"decimal bits
@@ -38,8 +40,8 @@ pub fn parse_extended_precision_bytes(b: [u8; 10]) -> f64 {
     }
 
     match (b[0], b[1]) {
-        (0, 0) => unimplemented!("cases not handled"),
-        (0b01111111, 0b11111111) => unimplemented!("cases not handled"),
+        (0, 0) => unimplemented!("cases not handled"), // ok - zero, denormal
+        (0b01111111, 0b11111111) => unimplemented!("cases not handled"), // err - not supported
         // if sig > 1, 63rd bit must have been set
         (exp1, exp2) if significand.gt(&1f64) => {
             let exp = u16::from_be_bytes([exp1, exp2]);
@@ -51,6 +53,6 @@ pub fn parse_extended_precision_bytes(b: [u8; 10]) -> f64 {
                 false => res,
             }
         }
-        (_, _) => unimplemented!("case not handled"),
+        (_, _) => unimplemented!("case not handled"), // err not supported
     }
 }

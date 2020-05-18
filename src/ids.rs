@@ -26,5 +26,5 @@ pub const BASC: &ChunkID = b"basc";
 pub const TRNS: &ChunkID = b"trns";
 pub const CATE: &ChunkID = b"cate";
 
-pub const TAG: &[u8; 3] = b"TAG";
-pub const ID3: &[u8; 3] = b"ID3";
+pub const TAG: &[u8; 3] = b"TAG"; // id3 v1
+pub const ID3: &[u8; 3] = b"ID3"; // id3 v2

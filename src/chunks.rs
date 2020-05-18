@@ -71,7 +71,6 @@ impl Chunk for FormChunk {
         if &id != ids::FORM {
             return Err(ChunkError::InvalidID(id));
         }
-        // TODO validate this is correct chunk by id - rewind reader?
 
         let size = reader::read_i32_be(buf);
         println!("form chunk bytes {}", size);
