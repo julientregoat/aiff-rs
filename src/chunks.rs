@@ -5,19 +5,20 @@ use super::{
 };
 use id3;
 use std::io::{Read, Seek, SeekFrom};
+use std::ops::Div;
 
 #[derive(Debug)]
 pub enum ChunkError {
-    InvalidID(ids::ChunkID),
-    InvalidFormType(ids::ChunkID),
+    InvalidID(ChunkID),
+    InvalidFormType(ChunkID),
     InvalidID3Version([u8; 2]),
 }
 
 // TODO auto implemented 'check' fn with associated const ID
 // auto impl '_build' that includes the check before calling inner build
 pub trait Chunk {
-    fn build<S: Read + Seek>(
-        buffer: Buffer<S>,
+    fn build(
+        buffer: Buffer<impl Read + Seek>,
         id: ChunkID,
     ) -> Result<Self, ChunkError>
     where
@@ -35,34 +36,36 @@ pub struct FormChunk {
 }
 
 impl FormChunk {
-    pub fn common(&self) -> &Option<CommonChunk> {
-        &self.common
-    }
+    pub fn common(&self) -> &Option<CommonChunk> { &self.common }
 
     pub fn set_common(&mut self, chunk: CommonChunk) {
         self.common = Some(chunk);
     }
 
-    pub fn sound(&self) -> &Option<SoundDataChunk> {
-        &self.sound
-    }
+    pub fn sound(&self) -> &Option<SoundDataChunk> { &self.sound }
 
     pub fn set_sound(&mut self, chunk: SoundDataChunk) {
         self.sound = Some(chunk);
     }
 
-    pub fn chunks(&self) -> &Vec<Box<dyn Chunk>> {
-        &self.chunks
-    }
+    pub fn chunks(&self) -> &Vec<Box<dyn Chunk>> { &self.chunks }
 
     pub fn add_chunk(&mut self, chunk: Box<dyn Chunk>) {
         self.chunks.push(chunk);
     }
+
+    pub fn duration(&self) -> Option<f64> {
+        if let Some(common) = &self.common {
+            Some((common.num_sample_frames as f64).div(common.sample_rate))
+        } else {
+            None
+        }
+    }
 }
 
 impl Chunk for FormChunk {
-    fn build<S: Read + Seek>(
-        buf: Buffer<S>,
+    fn build(
+        buf: Buffer<impl Read + Seek>,
         id: ChunkID,
     ) -> Result<FormChunk, ChunkError> {
         if &id != ids::FORM {
@@ -100,8 +103,8 @@ pub struct CommonChunk {
 }
 
 impl Chunk for CommonChunk {
-    fn build<S: Read + Seek>(
-        buf: Buffer<S>,
+    fn build(
+        buf: Buffer<impl Read + Seek>,
         id: ChunkID,
     ) -> Result<CommonChunk, ChunkError> {
         if &id != ids::COMMON {
@@ -152,8 +155,8 @@ pub struct SoundDataChunk {
 }
 
 impl Chunk for SoundDataChunk {
-    fn build<S: Read + Seek>(
-        buf: Buffer<S>,
+    fn build(
+        buf: Buffer<impl Read + Seek>,
         id: ChunkID,
     ) -> Result<SoundDataChunk, ChunkError> {
         if &id != ids::SOUND {
@@ -175,6 +178,7 @@ impl Chunk for SoundDataChunk {
         // let stop = start + sound_size as usize;
         let sound_size = size;
 
+        // TODO parse as frames?
         let mut sound_data = vec![0; sound_size as usize];
         buf.read_exact(&mut sound_data).unwrap();
 
@@ -193,10 +197,50 @@ pub struct Marker {
     marker_name: String,
 }
 
+impl Marker {
+    pub fn from_reader(r: &mut impl Read) -> Marker {
+        let id = reader::read_i16_be(r);
+        let position = reader::read_u32_be(r);
+        let marker_name = reader::read_pstring(r);
+
+        Marker {
+            id,
+            position,
+            marker_name,
+        }
+    }
+}
+
 pub struct MarkerChunk {
     pub size: i32,
     pub num_markers: u16,
     pub markers: Vec<Marker>,
+}
+
+impl Chunk for MarkerChunk {
+    fn build(
+        buf: Buffer<impl Read + Seek>,
+        id: ChunkID,
+    ) -> Result<MarkerChunk, ChunkError> {
+        if &id != ids::MARKER {
+            return Err(ChunkError::InvalidID(id));
+        }
+
+        let size = reader::read_i32_be(buf);
+        let num_markers = reader::read_u16_be(buf);
+        let mut markers = Vec::with_capacity(num_markers as usize);
+        // is it worth it to read all markers at once ant create from buf?
+        // or does the usage of BufReader make it irrelevant?
+        for _ in 0..num_markers {
+            markers.push(Marker::from_reader(buf));
+        }
+
+        Ok(MarkerChunk {
+            size,
+            num_markers,
+            markers,
+        })
+    }
 }
 
 pub enum TextChunkType {
@@ -213,9 +257,9 @@ pub struct TextChunk {
 }
 
 impl Chunk for TextChunk {
-    fn build<S: Read + Seek>(
-        buf: Buffer<S>,
-        id: ids::ChunkID,
+    fn build(
+        buf: Buffer<impl Read + Seek>,
+        id: ChunkID,
     ) -> Result<TextChunk, ChunkError> {
         let chunk_type = match &id {
             ids::NAME => TextChunkType::Name,
@@ -242,13 +286,10 @@ pub struct ID3v2Chunk {
     version: [u8; 2],
 }
 
-// IMPORTANT - there is a COMM ID here as well. not a a problem
-// if the id3 data is separated.
-// v2.3 http://id3.org/id3v2.3.0
-// v2.4 https://id3.org/id3v2.4.0-structure
+// should this be an optional feature? maybe consumer already has id3 parsing
 impl Chunk for ID3v2Chunk {
-    fn build<S: Read + Seek>(
-        buf: Buffer<S>,
+    fn build(
+        buf: Buffer<impl Read + Seek>,
         id: ChunkID,
     ) -> Result<ID3v2Chunk, ChunkError> {
         if &id[0..3] != ids::ID3 && &id[1..] != ids::ID3 {
