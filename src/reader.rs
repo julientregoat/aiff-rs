@@ -8,8 +8,9 @@ use std::io::{Read, Seek, SeekFrom};
 pub type Buffer<'a, Source> = &'a mut BufReader<Source>;
 
 // TODO rules
-// max one FORM, Common, Sound Data chunk
+// max one FORM, Common, Sound Data, Instrument, audio recording, comments chunk
 // sound data chunk is optional if `num_sample_frames` is 0
+// instrument, midi, audio recording, comments chunks are optional
 
 // TODO impl iterator
 pub struct AiffReader<Source> {
@@ -25,16 +26,12 @@ impl<S: Read + Seek> AiffReader<S> {
         }
     }
 
-    // TODO remove chunk builder, replace with a fn if even needed
-    // use buf directly
     pub fn read(&mut self) -> Result<(), chunks::ChunkError> {
         let form_id = read_chunk_id(&mut self.buf);
         let mut form = FormChunk::build(&mut self.buf, form_id)?;
-        while self.buf.available() >= 4 {
-            // until form chunk is found, don't do anything else
 
-            let mut id = [0; 4];
-            self.buf.read_exact(&mut id).unwrap();
+        while self.buf.available() >= 4 {
+            let id = read_chunk_id(&mut self.buf);
 
             // once the common and form are detected, we can loop
             // buffer position is right past the id
@@ -68,7 +65,7 @@ impl<S: Read + Seek> AiffReader<S> {
                 ids::MIDI => println!("MIDI chunk detected"),
                 ids::RECORDING => println!("RECORDING chunk detected"),
                 ids::APPLICATION => println!("APPLICATION chunk detected"),
-                ids::COMMENT => println!("COMMENT chunk detected"),
+                ids::COMMENTS => println!("COMMENT chunk detected"),
                 ids::NAME | ids::AUTHOR | ids::COPYRIGHT | ids::ANNOTATION => {
                     let text =
                         chunks::TextChunk::build(&mut self.buf, id).unwrap();
@@ -124,9 +121,13 @@ impl<S: Read + Seek> AiffReader<S> {
     }
 }
 
+// TODO remove panics
+
 pub fn read_chunk_id(r: &mut impl Read) -> ids::ChunkID {
     let mut id = [0; 4];
-    r.read_exact(&mut id).unwrap();
+    if let Err(e) = r.read_exact(&mut id) {
+        panic!("unable to read_u8 {:?}", e)
+    }
     id
 }
 
@@ -154,6 +155,14 @@ pub fn read_u32_be(r: &mut impl Read) -> u32 {
     u32::from_be_bytes(b)
 }
 
+pub fn read_i8_be(r: &mut impl Read) -> i8 {
+    let mut b = [0; 1];
+    if let Err(e) = r.read_exact(&mut b) {
+        panic!("unable to read_i32_be {:?}", e)
+    }
+    i8::from_be_bytes(b)
+}
+
 pub fn read_i16_be(r: &mut impl Read) -> i16 {
     let mut b = [0; 2];
     if let Err(e) = r.read_exact(&mut b) {
@@ -171,10 +180,15 @@ pub fn read_i32_be(r: &mut impl Read) -> i32 {
 }
 
 // TODO testme with pascal strings
-pub fn read_pstring(r: &mut impl Read) -> String {
+pub fn read_pstring<R: Read + Seek>(r: &mut R) -> String {
     let len = read_u8(r);
     let mut str_buf = vec![0; len as usize];
     r.read_exact(&mut str_buf).unwrap();
+
+    if len % 2 > 0 {
+        // skip pad byte if odd
+        r.seek(SeekFrom::Current(1));
+    }
 
     String::from_utf8(str_buf).unwrap()
 }
