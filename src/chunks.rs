@@ -446,7 +446,7 @@ impl Chunk for ApplicationSpecificChunk {
         Ok(ApplicationSpecificChunk {
             size,
             application_signature,
-            data: data.iter().map(|byte| *byte as i8).collect(),
+            data: data.iter().map(|byte| i8::from_be_bytes([*byte])).collect(),
         })
     }
 }
