@@ -17,7 +17,7 @@ pub enum ChunkError {
 
 // TODO rename 'build'
 pub trait Chunk {
-    fn build(
+    fn parse(
         buffer: Buffer<impl Read + Seek>,
         id: ChunkID,
     ) -> Result<Self, ChunkError>
@@ -26,11 +26,19 @@ pub trait Chunk {
 }
 
 // TODO samples iterator, enable seeking by duration fn
+// TODO different form chunks based on parsing options? lighter weight
+#[derive(Debug)]
 pub struct FormChunk {
     size: i32,
     common: Option<CommonChunk>,
     sound: Option<SoundDataChunk>,
-    chunks: Vec<Box<dyn Chunk>>, // TODO no box dyn
+    comments: Option<CommentsChunk>,
+    instrument: Option<InstrumentChunk>,
+    recording: Option<AudioRecordingChunk>,
+    texts: Option<Vec<TextChunk>>,
+    markers: Option<Vec<MarkerChunk>>,
+    midi: Option<Vec<MIDIDataChunk>>,
+    apps: Option<Vec<ApplicationSpecificChunk>>,
 }
 
 impl FormChunk {
@@ -38,24 +46,72 @@ impl FormChunk {
         &self.common
     }
 
-    pub fn set_common(&mut self, chunk: CommonChunk) {
-        self.common = Some(chunk);
+    pub fn set_common(&mut self, c: CommonChunk) {
+        self.common = Some(c);
     }
 
     pub fn sound(&self) -> &Option<SoundDataChunk> {
         &self.sound
     }
 
-    pub fn set_sound(&mut self, chunk: SoundDataChunk) {
-        self.sound = Some(chunk);
+    pub fn set_sound(&mut self, c: SoundDataChunk) {
+        self.sound = Some(c);
     }
 
-    pub fn chunks(&self) -> &Vec<Box<dyn Chunk>> {
-        &self.chunks
+    pub fn set_comments(&mut self, c: CommentsChunk) {
+        self.comments = Some(c)
     }
 
-    pub fn add_chunk(&mut self, chunk: Box<dyn Chunk>) {
-        self.chunks.push(chunk);
+    pub fn set_instrument(&mut self, c: InstrumentChunk) {
+        self.instrument = Some(c)
+    }
+
+    pub fn set_recording(&mut self, c: AudioRecordingChunk) {
+        self.recording = Some(c)
+    }
+
+    pub fn add_text_chunk(&mut self, c: TextChunk) {
+        if self.texts.is_none() {
+            self.texts = Some(vec![]);
+        }
+        if let Some(t) = &mut self.texts {
+            t.push(c);
+        } else {
+            panic!("vec should exist at this point")
+        }
+    }
+
+    pub fn add_marker_chunk(&mut self, c: MarkerChunk) {
+        if self.markers.is_none() {
+            self.markers = Some(vec![]);
+        }
+        if let Some(m) = &mut self.markers {
+            m.push(c);
+        } else {
+            panic!("vec should exist at this point")
+        }
+    }
+
+    pub fn add_midi_chunk(&mut self, c: MIDIDataChunk) {
+        if self.midi.is_none() {
+            self.midi = Some(vec![]);
+        }
+        if let Some(m) = &mut self.midi {
+            m.push(c);
+        } else {
+            panic!("vec should exist at this point")
+        }
+    }
+
+    pub fn add_app_chunk(&mut self, c: ApplicationSpecificChunk) {
+        if self.apps.is_none() {
+            self.apps = Some(vec![]);
+        }
+        if let Some(a) = &mut self.apps {
+            a.push(c);
+        } else {
+            panic!("vec should exist at this point")
+        }
     }
 
     pub fn duration(&self) -> Option<f64> {
@@ -68,7 +124,7 @@ impl FormChunk {
 }
 
 impl Chunk for FormChunk {
-    fn build(
+    fn parse(
         buf: Buffer<impl Read + Seek>,
         id: ChunkID,
     ) -> Result<FormChunk, ChunkError> {
@@ -86,7 +142,13 @@ impl Chunk for FormChunk {
                 size,
                 common: None,
                 sound: None,
-                chunks: vec![],
+                comments: None,
+                instrument: None,
+                recording: None,
+                texts: None,
+                markers: None,
+                midi: None,
+                apps: None,
             }),
             ids::AIFF_C => {
                 println!("aiff c file detected; unsupported");
@@ -97,6 +159,7 @@ impl Chunk for FormChunk {
     }
 }
 
+#[derive(Debug)]
 pub struct CommonChunk {
     pub size: i32,
     pub num_channels: i16,
@@ -106,7 +169,7 @@ pub struct CommonChunk {
 }
 
 impl Chunk for CommonChunk {
-    fn build(
+    fn parse(
         buf: Buffer<impl Read + Seek>,
         id: ChunkID,
     ) -> Result<CommonChunk, ChunkError> {
@@ -135,6 +198,7 @@ impl Chunk for CommonChunk {
     }
 }
 
+#[derive(Debug)]
 pub struct SoundDataChunk {
     pub size: i32,
     pub offset: u32,
@@ -143,7 +207,7 @@ pub struct SoundDataChunk {
 }
 
 impl Chunk for SoundDataChunk {
-    fn build(
+    fn parse(
         buf: Buffer<impl Read + Seek>,
         id: ChunkID,
     ) -> Result<SoundDataChunk, ChunkError> {
@@ -169,6 +233,7 @@ impl Chunk for SoundDataChunk {
 }
 
 type MarkerId = i16;
+#[derive(Debug)]
 pub struct Marker {
     id: MarkerId,
     position: u32,
@@ -190,6 +255,7 @@ impl Marker {
     }
 }
 
+#[derive(Debug)]
 pub struct MarkerChunk {
     pub size: i32,
     pub num_markers: u16,
@@ -197,7 +263,7 @@ pub struct MarkerChunk {
 }
 
 impl Chunk for MarkerChunk {
-    fn build(
+    fn parse(
         buf: Buffer<impl Read + Seek>,
         id: ChunkID,
     ) -> Result<MarkerChunk, ChunkError> {
@@ -229,6 +295,7 @@ pub enum TextChunkType {
     Annotation,
 }
 
+#[derive(Debug)]
 pub struct TextChunk {
     pub chunk_type: TextChunkType,
     pub size: i32,
@@ -236,7 +303,7 @@ pub struct TextChunk {
 }
 
 impl Chunk for TextChunk {
-    fn build(
+    fn parse(
         buf: Buffer<impl Read + Seek>,
         id: ChunkID,
     ) -> Result<TextChunk, ChunkError> {
@@ -266,13 +333,14 @@ impl Chunk for TextChunk {
     }
 }
 
+#[derive(Debug)]
 pub struct ID3v2Chunk {
     version: [u8; 2],
 }
 
 // should this be an optional feature? maybe consumer already has id3 parsing
 impl Chunk for ID3v2Chunk {
-    fn build(
+    fn parse(
         buf: Buffer<impl Read + Seek>,
         id: ChunkID,
     ) -> Result<ID3v2Chunk, ChunkError> {
@@ -300,6 +368,7 @@ impl Chunk for ID3v2Chunk {
     }
 }
 
+#[derive(Debug)]
 pub struct Loop {
     // 0 no looping / 1 foward loop / 2 forward backward loop - use enum?
     play_mode: i16,
@@ -323,6 +392,7 @@ impl Loop {
 }
 
 // midi note value range = 0..127 (? not the full range?)
+#[derive(Debug)]
 pub struct InstrumentChunk {
     size: i32,
     base_note: i8,     // MIDI
@@ -337,7 +407,7 @@ pub struct InstrumentChunk {
 }
 
 impl Chunk for InstrumentChunk {
-    fn build(
+    fn parse(
         buf: Buffer<impl Read + Seek>,
         id: ChunkID,
     ) -> Result<InstrumentChunk, ChunkError> {
@@ -372,13 +442,14 @@ impl Chunk for InstrumentChunk {
     }
 }
 
+#[derive(Debug)]
 pub struct MIDIDataChunk {
     size: i32,
     data: Vec<u8>,
 }
 
 impl Chunk for MIDIDataChunk {
-    fn build(
+    fn parse(
         buf: Buffer<impl Read + Seek>,
         id: ChunkID,
     ) -> Result<MIDIDataChunk, ChunkError> {
@@ -395,6 +466,7 @@ impl Chunk for MIDIDataChunk {
     }
 }
 
+#[derive(Debug)]
 pub struct AudioRecordingChunk {
     size: i32,
     // AESChannelStatusData
@@ -403,7 +475,7 @@ pub struct AudioRecordingChunk {
 }
 
 impl Chunk for AudioRecordingChunk {
-    fn build(
+    fn parse(
         buf: Buffer<impl Read + Seek>,
         id: ChunkID,
     ) -> Result<AudioRecordingChunk, ChunkError> {
@@ -423,6 +495,7 @@ impl Chunk for AudioRecordingChunk {
     }
 }
 
+#[derive(Debug)]
 pub struct ApplicationSpecificChunk {
     size: i32,
     application_signature: ChunkID, // TODO check if bytes should be i8
@@ -430,7 +503,7 @@ pub struct ApplicationSpecificChunk {
 }
 
 impl Chunk for ApplicationSpecificChunk {
-    fn build(
+    fn parse(
         buf: Buffer<impl Read + Seek>,
         id: ChunkID,
     ) -> Result<ApplicationSpecificChunk, ChunkError> {
@@ -451,6 +524,7 @@ impl Chunk for ApplicationSpecificChunk {
     }
 }
 
+#[derive(Debug)]
 pub struct Comment {
     timestamp: u32,
     marker_id: MarkerId,
@@ -478,6 +552,7 @@ impl Comment {
     }
 }
 
+#[derive(Debug)]
 pub struct CommentsChunk {
     size: i32,
     num_comments: u16,
@@ -485,7 +560,7 @@ pub struct CommentsChunk {
 }
 
 impl Chunk for CommentsChunk {
-    fn build(
+    fn parse(
         buf: Buffer<impl Read + Seek>,
         id: ChunkID,
     ) -> Result<CommentsChunk, ChunkError> {
