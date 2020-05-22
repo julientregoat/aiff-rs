@@ -12,7 +12,8 @@ pub enum ChunkError {
     InvalidID(ChunkID),
     InvalidFormType(ChunkID),
     InvalidID3Version([u8; 2]),
-    InvalidSize(i32, i32), // expected, got
+    InvalidSize(i32, i32),     // expected, got,
+    InvalidData(&'static str), // failed to parse something
 }
 
 // TODO rename 'build'
@@ -25,13 +26,15 @@ pub trait Chunk {
         Self: Sized;
 }
 
-// TODO samples iterator, enable seeking by duration fn
 // TODO different form chunks based on parsing options? lighter weight
+// can a macro help make this dynamic / implement every possible version?
+// CompletedFormChunk, with only required props
+// CompletedFormChunkWithMeta, with all metadata
 #[derive(Debug)]
 pub struct FormChunk {
-    size: i32,
-    common: Option<CommonChunk>,
-    sound: Option<SoundDataChunk>,
+    size: i32,                     // required
+    common: Option<CommonChunk>,   // required
+    sound: Option<SoundDataChunk>, // required if num_sample_frames > 0
     comments: Option<CommentsChunk>,
     instrument: Option<InstrumentChunk>,
     recording: Option<AudioRecordingChunk>,
@@ -186,7 +189,13 @@ impl Chunk for CommonChunk {
 
         let mut rate_buf = [0; 10]; // 1 bit sign, 15 bits exponent
         buf.read_exact(&mut rate_buf).unwrap();
-        let sample_rate = parse_extended_precision_bytes(rate_buf);
+
+        let sample_rate = match parse_extended_precision_bytes(rate_buf) {
+            Ok(s) => s,
+            Err(()) => {
+                return Err(ChunkError::InvalidData("Extended Precision"))
+            }
+        };
 
         Ok(CommonChunk {
             size,
@@ -288,6 +297,7 @@ impl Chunk for MarkerChunk {
     }
 }
 
+#[derive(Debug)]
 pub enum TextChunkType {
     Name,
     Author,
@@ -330,41 +340,6 @@ impl Chunk for TextChunk {
             size,
             text,
         })
-    }
-}
-
-#[derive(Debug)]
-pub struct ID3v2Chunk {
-    version: [u8; 2],
-}
-
-// should this be an optional feature? maybe consumer already has id3 parsing
-impl Chunk for ID3v2Chunk {
-    fn parse(
-        buf: Buffer<impl Read + Seek>,
-        id: ChunkID,
-    ) -> Result<ID3v2Chunk, ChunkError> {
-        if &id[0..3] != ids::ID3 && &id[1..] != ids::ID3 {
-            return Err(ChunkError::InvalidID(id));
-        }
-
-        // TODO is this necessary? can we get this from id3 read
-        let mut version = [0; 2];
-        buf.seek(SeekFrom::Current(3)).unwrap();
-        buf.read_exact(&mut version).unwrap();
-        buf.seek(SeekFrom::Current(-5)).unwrap();
-
-        // major versions up to 2.4, no minor versions known
-        if version[0] > 4 || version[1] != 0 {
-            return Err(ChunkError::InvalidID3Version(version));
-        }
-
-        // buffer MUST start with "ID3" or this call will fail
-        let tag = id3::Tag::read_from(buf).unwrap();
-        let frames: Vec<_> = tag.frames().collect();
-        println!("id3 frames {:?}", frames);
-
-        Ok(ID3v2Chunk { version })
     }
 }
 
@@ -581,5 +556,52 @@ impl Chunk for CommentsChunk {
             num_comments,
             comments,
         })
+    }
+}
+
+// #[derive(Debug)]
+// pub struct ID3v1Chunk {}
+
+// impl Chunk for ID3v1Chunk {
+//     fn parse(
+//         buf: Buffer<impl Read + Seek>,
+//         id: ChunkID,
+//     ) -> Result<ID3v1Chunk, ChunkError> {
+//     }
+// }
+
+// TODO store id3 franes
+#[derive(Debug)]
+pub struct ID3v2Chunk {
+    version: [u8; 2],
+}
+
+// should this be an optional feature? maybe consumer already has id3 parsing
+impl Chunk for ID3v2Chunk {
+    fn parse(
+        buf: Buffer<impl Read + Seek>,
+        id: ChunkID,
+    ) -> Result<ID3v2Chunk, ChunkError> {
+        if &id[0..3] != ids::ID3 && &id[1..] != ids::ID3 {
+            return Err(ChunkError::InvalidID(id));
+        }
+
+        // TODO is this necessary? can we get this from id3 read
+        let mut version = [0; 2];
+        buf.seek(SeekFrom::Current(3)).unwrap();
+        buf.read_exact(&mut version).unwrap();
+        buf.seek(SeekFrom::Current(-5)).unwrap();
+
+        // major versions up to 2.4, no minor versions known
+        if version[0] > 4 || version[1] != 0 {
+            return Err(ChunkError::InvalidID3Version(version));
+        }
+
+        // buffer MUST start with "ID3" or this call will fail
+        let tag = id3::Tag::read_from(buf).unwrap();
+        let frames: Vec<_> = tag.frames().collect();
+        println!("id3 frames {:?}", frames);
+
+        Ok(ID3v2Chunk { version })
     }
 }

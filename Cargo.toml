@@ -13,6 +13,7 @@ keywords = ["aiff", "pcm", "audio", "codec", "encoder", "decoder"]
 id3 = "0.5.1"
 bytes = "0.5.4"
 seek_bufread = "1.2.2"
+log = "0.4.8"
 # dynstack = "0.4.0" # interesting option for maintaining chunks
 
 [dev-dependencies]

@@ -7,12 +7,8 @@ use std::io::{Read, Seek, SeekFrom};
 
 pub type Buffer<'a, Source> = &'a mut BufReader<Source>;
 
-// TODO rules
-// max one FORM, Common, Sound Data, Instrument, audio recording, comments chunk
-// sound data chunk is optional if `num_sample_frames` is 0
-// instrument, midi, audio recording, comments chunks are optional
-
 // TODO impl iterator
+// TODO samples iterator, enable seeking by duration fn
 pub struct AiffReader<Source> {
     buf: BufReader<Source>, // TODO would be cleaner to support for impl Read
     form_chunk: Option<FormChunk>,
@@ -224,7 +220,7 @@ pub fn read_pstring<R: Read + Seek>(r: &mut R) -> String {
 
     if len % 2 > 0 {
         // skip pad byte if odd
-        r.seek(SeekFrom::Current(1));
+        r.seek(SeekFrom::Current(1)).unwrap();
     }
 
     String::from_utf8(str_buf).unwrap()
