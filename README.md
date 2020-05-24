@@ -1,3 +1,4 @@
 # aiff-rs
 
-work in progress
+so far, only reading / decoding AIFF files is supported. I will add in encoding
+at some point in the future

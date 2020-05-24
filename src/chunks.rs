@@ -228,6 +228,7 @@ impl Chunk for SoundDataChunk {
         let offset = reader::read_u32_be(buf);
         let block_size = reader::read_u32_be(buf);
 
+        // TODO some sort of streaming read optimization?
         let sound_size = size - 8; // account for offset + block size bytes
         let mut sound_data = vec![0; sound_size as usize];
         buf.read_exact(&mut sound_data).unwrap();
@@ -600,7 +601,7 @@ impl Chunk for ID3v2Chunk {
         // buffer MUST start with "ID3" or this call will fail
         let tag = id3::Tag::read_from(buf).unwrap();
         let frames: Vec<_> = tag.frames().collect();
-        println!("id3 frames {:?}", frames);
+        // println!("id3 frames {:?}", frames);
 
         Ok(ID3v2Chunk { version })
     }
