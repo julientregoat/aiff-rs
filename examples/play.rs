@@ -9,13 +9,10 @@ use cpal::{
 use std::fs::File;
 
 fn main() {
-    // let args: Vec<String> = std::env::args().collect();
-    // println!("args {:?}", args);
     // let file = File::open("./devil.aiff").unwrap();
-    let file = File::open("./down.aiff").unwrap();
-    // let mut f = File::open(
-    //     "/Volumes/jt-hd-osx/Music/LW Productions/Chemistry and Love/05 Phantom Creeps.aiff",
-    // )
+    // let file = File::open("./down.aiff").unwrap();
+    let file = File::open("./kc2496.aiff").unwrap();
+    // let file = File::open("./kc3296.aiff").unwrap();
     // .unwrap();
 
     let mut reader = AiffReader::new(file);
@@ -66,7 +63,7 @@ fn main() {
     println!("stream config {:?}", stream_config);
 
     let samples: Vec<_> =
-        reader.samples::<i16>().iter().map(|s| s.to_f32()).collect();
+        reader.samples::<i32>().iter().map(|s| s.to_f32()).collect();
 
     // let samples: Vec<_> = reader.samples().iter().map(|s| s.to_f32()).collect();
     let mut idx = 0;
@@ -88,7 +85,6 @@ fn main() {
                     conf.timestamp()
                 );
 
-                // for frame in
                 for frame in data.chunks_mut((nchan + pad) as usize) {
                     for point in 0..nchan as usize {
                         frame[point] = samples[idx];

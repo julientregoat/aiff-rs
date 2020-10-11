@@ -183,9 +183,13 @@ impl<Source: Read + Seek> AiffReader<Source> {
         println!("sample points {:?}", sample_points);
 
         let mut samples = Vec::with_capacity(sample_points);
+        let mut bytes_per_point = (c.bit_rate / 8) as usize;
+        if c.bit_rate % 8 != 0 {
+            bytes_per_point += 1;
+        }
 
         for point in 0..sample_points {
-            samples.push(T::parse(&s.sound_data, point * 2, c.bit_rate));
+            samples.push(T::parse(&s.sound_data, point * bytes_per_point, c.bit_rate));
         }
 
         samples

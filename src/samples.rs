@@ -15,7 +15,7 @@ impl SampleType for i8 {
         if bit_width < 8 {
             unimplemented!("only 16 24 32 bit supported, got {:?}", bit_width)
         } else if bit_width > 8 {
-            panic!("invalid bit width supplied 8 vs {:?}", bit_width)
+            panic!("invalid bit width supplied. expected 8 vs {:?}", bit_width)
         }
         i8::from_be_bytes([data[pos]])
     }
@@ -26,7 +26,7 @@ impl SampleType for i16 {
         if bit_width < 16 {
             unimplemented!("only 16 24 32 bit supported, got {:?}", bit_width)
         } else if bit_width > 16 {
-            panic!("invalid bit width supplied 32 vs {:?}", bit_width)
+            panic!("invalid bit width supplied. expected 16 vs {:?}", bit_width)
         }
         i16::from_be_bytes([data[pos], data[pos + 1]])
     }
@@ -42,20 +42,20 @@ impl SampleType for i32 {
                 data[pos + 3],
             ]),
             24 => {
-                i32::from_be_bytes([0, data[pos], data[pos + 1], data[pos + 2]])
+                i32::from_be_bytes([0x0, data[pos], data[pos + 1], data[pos + 2]])
             }
-            b if b <= 16 => panic!("invalid bit width supplied 32 vs {:?}", b),
+            b if b <= 16 => panic!("invalid bit width supplied. expected 24 or 32 vs {:?}", b),
             b => unimplemented!("only 16 24 32 bit supported, got {:?}", b),
         }
     }
 }
 
-impl SampleType for f32 {
-    fn parse(data: &[u8], pos: usize, bit_width: i16) -> Self {
-        let int_val = i32::parse(data, pos, bit_width);
-        int_val as f32
-    }
-}
+// impl SampleType for f32 {
+//     fn parse(data: &[u8], pos: usize, bit_width: i16) -> Self {
+//         let int_val = i32::parse(data, pos, bit_width);
+//         int_val as f32
+//     }
+// }
 
 // I made this before deciding not to implement an iterator. so this will
 // probably need to be refactored when iterator is implemented
