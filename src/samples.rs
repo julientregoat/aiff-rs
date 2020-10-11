@@ -42,7 +42,14 @@ impl SampleType for i32 {
                 data[pos + 3],
             ]),
             24 => {
-                i32::from_be_bytes([0x0, data[pos], data[pos + 1], data[pos + 2]])
+                let is_pos = data[pos] & 0b1000_0000 == 0;
+                let extra_byte;
+                if is_pos {
+                    extra_byte = u8::MIN;
+                } else {
+                    extra_byte = u8::MAX;
+                }
+                i32::from_be_bytes([extra_byte, data[pos], data[pos + 1], data[pos + 2]])
             }
             b if b <= 16 => panic!("invalid bit width supplied. expected 24 or 32 vs {:?}", b),
             b => unimplemented!("only 16 24 32 bit supported, got {:?}", b),
