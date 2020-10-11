@@ -14,10 +14,10 @@ id3 = "0.5.1"
 bytes = "0.5.4"
 seek_bufread = "1.2.2"
 log = "0.4.8"
-cpal = "0.11.0"
 # dynstack = "0.4.0" # interesting option for maintaining chunks
 
 [dev-dependencies]
+cpal = "0.12.1"
 
 # used with cargo-run-script
 [package.metadata.scripts]
