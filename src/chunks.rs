@@ -230,7 +230,8 @@ impl Chunk for SoundDataChunk {
 
         // TODO some sort of streaming read optimization?
         let sound_size = size - 8; // account for offset + block size bytes
-        let mut sound_data = vec![0; sound_size as usize];
+        let mut sound_data = vec![0u8; sound_size as usize];
+
         buf.read_exact(&mut sound_data).unwrap();
 
         Ok(SoundDataChunk {

@@ -1,4 +1,4 @@
-// a lazy IEEE 754 extended precision number parser
+// a partially implemented IEEE 754 extended precision number parser
 // https://en.wikipedia.org/wiki/Extended_precision#x86_extended_precision_format
 use log::error;
 use std::ops::Mul;

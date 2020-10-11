@@ -1,8 +1,8 @@
 use super::{
     chunks::{self, Chunk, FormChunk},
     ids,
+    samples::SampleType,
 };
-use coreaudio_sys as coreaudio;
 use seek_bufread::BufReader;
 use std::io::{Read, Seek, SeekFrom};
 
@@ -12,16 +12,16 @@ pub type Buffer<'a, Source> = &'a mut BufReader<Source>;
 // TODO diffeerent types of reader structs?
 // AiffAudioReader / AiffCompleteReader (id3 optional)
 pub struct AiffReader<Source> {
-    pub buf: BufReader<Source>, // TODO would be cleaner to support for impl Read
-    pub form_chunk: Option<FormChunk>,
+    buf: BufReader<Source>,
+    form_chunk: Option<FormChunk>,
     // pub id3v1_tags: Vec<chunks::ID3v1Chunk>, // should this be optional? or separate
-    pub id3v2_tags: Vec<chunks::ID3v2Chunk>, // should this be optional? or separate
+    id3v2_tags: Vec<chunks::ID3v2Chunk>, // should this be optional? or separate
 }
 
-impl<S: Read + Seek> AiffReader<S> {
-    pub fn new(source: S) -> AiffReader<S> {
+impl<Source: Read + Seek> AiffReader<Source> {
+    pub fn new(s: Source) -> AiffReader<Source> {
         AiffReader {
-            buf: BufReader::new(source),
+            buf: BufReader::new(s),
             form_chunk: None,
             id3v2_tags: vec![],
             // id3v1_tags: vec![],
@@ -157,11 +157,17 @@ impl<S: Read + Seek> AiffReader<S> {
         Ok(())
     }
 
+    pub fn form(&self) -> &Option<FormChunk> {
+        &self.form_chunk
+    }
+
     // TODO need to check available
     // TODO return result iterator or complete buffer of data
     // TODO pack frams
     // should return a generic AiffSample<u8/u16/u32> etc
-    pub fn samples(&self) -> Vec<impl cpal::Sample> {
+    // TODO samples is most likely integers
+
+    pub fn samples<T: SampleType>(&self) -> Vec<T> {
         let f = self.form_chunk.as_ref().unwrap();
         let s = f.sound().as_ref().unwrap();
         let c = f.common().as_ref().unwrap();
@@ -172,53 +178,26 @@ impl<S: Read + Seek> AiffReader<S> {
         // playback occurs at <sample_rate> frames per second
         // num samples is always > 0 so shouldn't be any conversion issues
         // maybe it should be stored as a u16?
-        let sample_points = c.num_sample_frames * c.num_channels as u32;
-        // c.num_sample_frames
-        // c.bit_rate
-        // s.sound_data
-        // print!("as not and as {} {}", std::u32::MAX, std::u32::MAX as f32);
-        // downsample to f32 which loses 2 digits of precision
-        match c.bit_rate {
-            r if r > 16 => {
-                unimplemented!();
-                // let points = Vec::with_capacity(sample_points as usize);
-                // for idx in 0..sample_points {
-                //     let start = (idx * 4) as usize;
-                //     let num = u32::from_be_bytes([
-                //         s.sound_data[start],
-                //         s.sound_data[start + 1],
-                //         s.sound_data[start + 2],
-                //         s.sound_data[start + 3],
-                //     ]);
-                // }
-            }
-            r if r > 8 => {
-                let mut points = Vec::with_capacity(sample_points as usize);
-                // let buf = [0u8; 2];
-                for point in 0..sample_points {
-                    let loc = (point * 2) as usize;
-                    points.push(u16::from_be_bytes([
-                        s.sound_data[loc],
-                        s.sound_data[loc + 1],
-                    ]));
-                }
-                points
-            }
-            r if r > 0 => {
-                unimplemented!();
-                // let points = Vec::with_capacity(sample_points as usize);
-                // let buf = [0u8; 1];
-                // points.push(buf);
-            }
-            _ => panic!("invalid point size"),
+        let sample_points =
+            (c.num_sample_frames * c.num_channels as u32) as usize;
+        println!("sample points {:?}", sample_points);
+
+        let mut samples = Vec::with_capacity(sample_points);
+
+        for point in 0..sample_points {
+            samples.push(T::parse(&s.sound_data, point * 2, c.bit_rate));
         }
+
+        samples
     }
+
+    // TODO create samples iterator for better performance
 }
 
 // enums are always the max possible size, so neeeds to be structs and traits
 
 // TODO remove panics
-// TODO move these into their own file - what's a good name? bitparse / bufparsec
+// TODO move these into their own file - what's a good name?
 
 pub fn read_chunk_id(r: &mut impl Read) -> ids::ChunkID {
     let mut id = [0; 4];
