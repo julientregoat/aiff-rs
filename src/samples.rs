@@ -1,3 +1,5 @@
+use std::convert::TryInto;
+
 pub struct AiffSamples {
     pos: usize,
 }
@@ -57,12 +59,15 @@ impl SampleType for i32 {
     }
 }
 
-// impl SampleType for f32 {
-//     fn parse(data: &[u8], pos: usize, bit_width: i16) -> Self {
-//         let int_val = i32::parse(data, pos, bit_width);
-//         int_val as f32
-//     }
-// }
+impl SampleType for f32 {
+    fn parse(data: &[u8], _: usize, _: i16) -> Self {
+        if let Ok(converted) = data.try_into(){
+            f32::from_be_bytes(converted)
+        } else {
+            panic!("Cannot parse")
+        }
+    }
+}
 
 // I made this before deciding not to implement an iterator. so this will
 // probably need to be refactored when iterator is implemented
