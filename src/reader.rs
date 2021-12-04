@@ -34,13 +34,14 @@ impl<Source: Read + Seek> AiffReader<Source> {
 
         while self.buf.available() >= 4 {
             let id = read_chunk_id(&mut self.buf);
+            println!("{:x?}", id);
 
             // once the common and form are detected, we can loop
             // buffer position is right past the id
             match &id {
                 ids::COMMON => {
                     println!("Common chunk detected");
-                    let common =
+                    let mut common =
                         chunks::CommonChunk::parse(&mut self.buf, id).unwrap();
                     println!(
                         "channels {} frames {} bit rate {} sample rate {}",
@@ -49,6 +50,23 @@ impl<Source: Read + Seek> AiffReader<Source> {
                         common.bit_rate,
                         common.sample_rate
                     );
+                    common.compression_type = match form.compressed {
+                        true => { 
+                            let x: String = read_pstring_with_len(&mut self.buf, 4);
+                            println!("skipping {:x?}", "32-big floating point ".len());
+                            read_pstring_with_len(&mut self.buf, "32-big floating point ".len());
+                            let fl32: String = String::from("fl32");
+                            let fl64: String = String::from("fl64");
+                            eprintln!("{:x?}", x);
+                            if x.ne(&fl32) && x.ne(&fl64) {
+                                eprintln!("This is still a naive implementation and we don't support other compressions"); 
+                                None
+                            } else {
+                                Some(x)
+                            }
+                        }
+                        false => None
+                    };
                     form.set_common(common);
                 }
                 ids::SOUND => {
@@ -109,7 +127,7 @@ impl<Source: Read + Seek> AiffReader<Source> {
                     form.add_text_chunk(text);
                 }
                 ids::FVER => {
-                    unimplemented!("FVER chunk detected");
+                    eprintln!("FVER chunk detected");
                 }
                 // 3 bytes "ID3" identifier
                 // TODO merge both options
@@ -138,7 +156,7 @@ impl<Source: Read + Seek> AiffReader<Source> {
                 [84, 65, 71, _] => println!("v1 id3"), // "TAG_"
                 [_, 84, 65, 71] => println!("v1 id3"), // "_TAG"
                 ids::CHAN | ids::BASC | ids::TRNS | ids::CATE => {
-                    unimplemented!("apple stuff detected")
+                    eprintln!("apple stuff detected")
                 }
                 id => println!(
                     "other chunk {:?} {:?}",
@@ -261,8 +279,12 @@ pub fn read_i32_be(r: &mut impl Read) -> i32 {
 
 // TODO testme with pascal strings
 pub fn read_pstring<R: Read + Seek>(r: &mut R) -> String {
-    let len = read_u8(r);
-    let mut str_buf = vec![0; len as usize];
+    let len: usize = read_u8(r) as usize;
+    read_pstring_with_len(r, len)
+}
+
+pub fn read_pstring_with_len<R: Read + Seek>(r: &mut R, len: usize) -> String {
+    let mut str_buf = vec![0; len];
     r.read_exact(&mut str_buf).unwrap();
 
     if len % 2 > 0 {
