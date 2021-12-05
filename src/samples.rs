@@ -60,12 +60,17 @@ impl SampleType for i32 {
 }
 
 impl SampleType for f32 {
-    fn parse(data: &[u8], _: usize, _: i16) -> Self {
-        if let Ok(converted) = data.try_into(){
-            f32::from_be_bytes(converted)
-        } else {
-            panic!("Cannot parse")
-        }
+    fn parse(chunk_payload: &[u8], position: usize, bit_width: i16) -> Self {
+        assert!(bit_width == 32, "Invalid bit width for f32");
+
+        let end = match (position as i16 + (bit_width / 4)) as usize > chunk_payload.len() {
+            true => chunk_payload.len(),
+            false => (position as i16 + (bit_width / 4)) as usize
+        };
+        let slice = &chunk_payload[position..end];
+        let r = f32::from_be_bytes([slice[0], slice[1], slice[2], slice[3]]);
+        println!("{:x?}", r);
+        r
     }
 }
 
