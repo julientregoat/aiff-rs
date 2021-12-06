@@ -17,6 +17,7 @@ pub const NAME: &ChunkID = b"NAME";
 pub const AUTHOR: &ChunkID = b"AUTH";
 pub const COPYRIGHT: &ChunkID = b"(c) ";
 pub const ANNOTATION: &ChunkID = b"ANNO";
+pub const COMPTYPE: &ChunkID = b"COMP";
 
 pub const AIFF_C: &ChunkID = b"AIFC";
 pub const FVER: &ChunkID = b"FVER"; // 'Format version' - for AIFF C

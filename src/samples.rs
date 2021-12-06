@@ -1,3 +1,5 @@
+use std::convert::TryInto;
+
 pub struct AiffSamples {
     pos: usize,
 }
@@ -57,12 +59,19 @@ impl SampleType for i32 {
     }
 }
 
-// impl SampleType for f32 {
-//     fn parse(data: &[u8], pos: usize, bit_width: i16) -> Self {
-//         let int_val = i32::parse(data, pos, bit_width);
-//         int_val as f32
-//     }
-// }
+impl SampleType for f32 {
+    fn parse(chunk_payload: &[u8], position: usize, bit_width: i16) -> Self {
+        assert!(bit_width == 32, "Invalid bit width for f32");
+        let try_end = position as i32 + (bit_width / 8) as i32;
+        let end = match try_end as usize > chunk_payload.len() {
+            true => chunk_payload.len(),
+            false => try_end as usize
+        };
+        let slice = &chunk_payload[position..end];
+        let r = f32::from_be_bytes([slice[0], slice[1], slice[2], slice[3]]);
+        r
+    }
+}
 
 // I made this before deciding not to implement an iterator. so this will
 // probably need to be refactored when iterator is implemented

@@ -42,6 +42,7 @@ pub struct FormChunk {
     markers: Option<Vec<MarkerChunk>>,
     midi: Option<Vec<MIDIDataChunk>>,
     apps: Option<Vec<ApplicationSpecificChunk>>,
+    pub compressed: bool,
 }
 
 impl FormChunk {
@@ -152,11 +153,21 @@ impl Chunk for FormChunk {
                 markers: None,
                 midi: None,
                 apps: None,
+                compressed: false,
             }),
-            ids::AIFF_C => {
-                println!("aiff c file detected; unsupported");
-                Err(ChunkError::InvalidFormType(form_type))
-            }
+            ids::AIFF_C => Ok(FormChunk {
+                size,
+                common: None,
+                sound: None,
+                comments: None,
+                instrument: None,
+                recording: None,
+                texts: None,
+                markers: None,
+                midi: None,
+                apps: None,
+                compressed: true,
+            }),
             &x => Err(ChunkError::InvalidFormType(x)),
         }
     }
@@ -169,6 +180,7 @@ pub struct CommonChunk {
     pub num_sample_frames: u32,
     pub bit_rate: i16, // in the spec, this is defined as `sample_size`
     pub sample_rate: f64, // 80 bit extended floating pt num
+    pub compression_type: Option<String>,
 }
 
 impl Chunk for CommonChunk {
@@ -196,13 +208,14 @@ impl Chunk for CommonChunk {
                 return Err(ChunkError::InvalidData("Extended Precision"))
             }
         };
-
+        
         Ok(CommonChunk {
             size,
             num_channels,
             num_sample_frames,
             bit_rate,
             sample_rate,
+            compression_type: None,
         })
     }
 }
