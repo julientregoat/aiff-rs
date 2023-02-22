@@ -17,7 +17,7 @@ log = "0.4.8"
 # dynstack = "0.4.0" # interesting option for maintaining chunks
 
 [dev-dependencies]
-cpal = "0.12.1"
+cpal = { version = "0.12.1", path = "../cpal" }
 
 # used with cargo-run-script
 [package.metadata.scripts]
